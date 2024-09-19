@@ -102,6 +102,8 @@ unique_ptr<LogicalOperator> FilterPushdown::Rewrite(unique_ptr<LogicalOperator> 
 		return PushdownLimit(std::move(op));
 	case LogicalOperatorType::LOGICAL_WINDOW:
 		return PushdownWindow(std::move(op));
+	case LogicalOperatorType::LOGICAL_UNNEST:
+		return PushdownUnnest(std::move(op));
 	default:
 		return FinishPushdown(std::move(op));
 	}

@@ -8,9 +8,11 @@
 
 #pragma once
 
+#include "duckdb/common/unique_ptr.hpp"
 #include "duckdb/common/unordered_set.hpp"
 #include "duckdb/optimizer/filter_combiner.hpp"
 #include "duckdb/optimizer/rule.hpp"
+#include "duckdb/planner/logical_operator.hpp"
 
 namespace duckdb {
 
@@ -65,6 +67,8 @@ private:
 	unique_ptr<LogicalOperator> PushdownLimit(unique_ptr<LogicalOperator> op);
 	//! Push down a LogicalWindow op
 	unique_ptr<LogicalOperator> PushdownWindow(unique_ptr<LogicalOperator> op);
+	//! Push down a LogicalUnnest op
+	unique_ptr<LogicalOperator> PushdownUnnest(unique_ptr<LogicalOperator> op);
 	// Pushdown an inner join
 	unique_ptr<LogicalOperator> PushdownInnerJoin(unique_ptr<LogicalOperator> op, unordered_set<idx_t> &left_bindings,
 	                                              unordered_set<idx_t> &right_bindings);
