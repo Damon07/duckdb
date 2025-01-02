@@ -49,6 +49,7 @@ public:
 	DUCKDB_API static void GetByteArray(vector<uint8_t> &byte_array, bool &is_negative, const string_t &blob);
 	//! Function to convert VARINT blob to a VARCHAR
 	DUCKDB_API static string VarIntToVarchar(const string_t &blob);
+	DUCKDB_API static string VarIntToVarcharOpt(const string_t &blob);
 	//! Function to convert Varchar to VARINT blob
 	DUCKDB_API static string VarcharToVarInt(const string_t &value);
 	//! ----------------------------------- Double Cast ----------------------------------- //

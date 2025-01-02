@@ -1,5 +1,8 @@
 #include "duckdb/optimizer/filter_combiner.hpp"
 
+#include "duckdb/common/assert.hpp"
+#include "duckdb/common/optional_ptr.hpp"
+#include "duckdb/common/typedefs.hpp"
 #include "duckdb/execution/expression_executor.hpp"
 #include "duckdb/optimizer/optimizer.hpp"
 #include "duckdb/planner/expression.hpp"
@@ -11,6 +14,7 @@
 #include "duckdb/planner/expression/bound_constant_expression.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckdb/planner/expression/bound_operator_expression.hpp"
+#include "duckdb/planner/expression_iterator.hpp"
 #include "duckdb/planner/filter/constant_filter.hpp"
 #include "duckdb/planner/filter/in_filter.hpp"
 #include "duckdb/planner/filter/null_filter.hpp"
@@ -43,6 +47,30 @@ Expression &FilterCombiner::GetNode(Expression &expr) {
 	D_ASSERT(stored_expressions.find(copy_ref) == stored_expressions.end());
 	stored_expressions[copy_ref] = std::move(copy);
 	return copy_ref;
+}
+
+bool FilterCombiner::TryGetMirrorNode(Expression &expr) {
+	// replace the child column refs with the column refs of the other side
+	bool failed = false;
+	bool replaced = false;
+	ExpressionIterator::EnumerateChildren(expr, [&](unique_ptr<Expression> &child) {
+		if (child->GetExpressionType() == ExpressionType::BOUND_COLUMN_REF) {
+			auto entry = equivalence_set_map.find(*child);
+			if (entry != equivalence_set_map.end()) {
+				auto index = entry->second;
+				auto exprs = equivalence_map.find(index);
+				if (exprs->second.size() != 2) {
+					// found a mirror node
+					failed = true;
+					return;
+				}
+				child = exprs->second[1].get().Copy();
+				replaced = true;
+			}
+		}
+	});
+
+	return !failed && replaced;
 }
 
 idx_t FilterCombiner::GetEquivalenceSet(Expression &expr) {
@@ -780,6 +808,19 @@ FilterResult FilterCombiner::AddBoundComparisonFilter(Expression &expr) {
 		}
 		// check the existing constant comparisons to see if we can do any pruning
 		auto ret = AddConstantComparison(info_list, info);
+		// if (!node.IsVolatile()) {
+		// 	// get mirror node
+		// 	auto mirror_node = node.Copy();
+		// 	auto succeed = TryGetMirrorNode(*mirror_node);
+		// 	if (succeed) {
+		// 		auto &node = GetNode(*mirror_node.get());
+		// 		idx_t mirror_equivalence_set = GetEquivalenceSet(node);
+		// 		D_ASSERT(constant_values.find(mirror_equivalence_set) != constant_values.end());
+		// 		auto &mirror_info_list = constant_values.find(mirror_equivalence_set)->second;
+		// 		AddConstantComparison(mirror_info_list, info);
+		// 	}
+		// }
+
 
 		auto &non_scalar = left_is_scalar ? *comparison.right : *comparison.left;
 		auto transitive_filter = FindTransitiveFilter(non_scalar);

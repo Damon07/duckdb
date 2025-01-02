@@ -1,0 +1,23 @@
+# name: benchmark/tpch/struct/tpch_q9_struct_nested.benchmark
+# description: Run Q09 over lineitem stored in nested structs
+# group: [struct]
+
+name Q09 Structs
+group tpch
+subgroup sf1
+
+require tpch
+
+load
+CALL dbgen(sf=1, suffix='_normalized');
+CREATE TABLE lineitem_struct AS SELECT {'id': rowid, 'values': lineitem_normalized} AS struct_val FROM lineitem_normalized;
+CREATE VIEW lineitem AS SELECT UNNEST(struct_val, recursive := true) FROM lineitem_struct;
+CREATE VIEW part AS SELECT * FROM part_normalized;
+CREATE VIEW supplier AS SELECT * FROM supplier_normalized;
+CREATE VIEW partsupp AS SELECT * FROM partsupp_normalized;
+CREATE VIEW orders AS SELECT * FROM orders_normalized;
+CREATE VIEW nation AS SELECT * FROM nation_normalized;
+
+run extension/tpch/dbgen/queries/q09.sql
+
+result extension/tpch/dbgen/answers/sf1/q09.csv

@@ -1,6 +1,9 @@
 #include "duckdb/common/types/varint.hpp"
 #include "duckdb/common/exception/conversion_exception.hpp"
+#include "duckdb/common/typedefs.hpp"
+#include <algorithm>
 #include <cmath>
+#include <cstdint>
 
 namespace duckdb {
 
@@ -158,14 +161,68 @@ void Varint::GetByteArray(vector<uint8_t> &byte_array, bool &is_negative, const 
 	auto blob_ptr = blob.GetData();
 
 	// Determine if the number is negative
-	is_negative = (blob_ptr[0] & 0x80) == 0;
-	for (idx_t i = 3; i < blob.GetSize(); i++) {
-		if (is_negative) {
-			byte_array.push_back(static_cast<uint8_t>(~blob_ptr[i]));
-		} else {
-			byte_array.push_back(static_cast<uint8_t>(blob_ptr[i]));
+	is_negative = (blob_ptr[0] & 0x80) == 0;	
+	byte_array.reserve(blob.GetSize() - 3);
+    if (is_negative) {
+        for (idx_t i = 3; i < blob.GetSize(); i++) {
+            byte_array.push_back(static_cast<uint8_t>(~blob_ptr[i]));
+        }
+    } else {
+        for (idx_t i = 3; i < blob.GetSize(); i++) {
+            byte_array.push_back(static_cast<uint8_t>(blob_ptr[i]));
+        }
+    }
+}
+
+string Varint::VarIntToVarcharOpt(const string_t &blob) {
+	string decimal_string;
+	vector<uint8_t> byte_array;
+	bool is_negative;
+	GetByteArray(byte_array, is_negative, blob);
+	vector<uint32_t> digits;
+	// round byte_array to 4 multiple size, so that we can process 4 bytes at a time
+	idx_t padding_size = 4 - byte_array.size() % 4;
+	for (idx_t j = 0; j < padding_size; j++) {
+		byte_array.push_back(0);
+	}
+	for (idx_t i = 0; i < byte_array.size(); i += 4) {
+		uint32_t hi = static_cast<uint32_t>(byte_array[i]|
+												byte_array[i+1]<<8|
+												byte_array[i+2]<<16|
+												byte_array[i+3]<<24);
+
+		for (idx_t j = 0; j < digits.size(); j++) {
+			uint64_t tmp = static_cast<uint64_t>(digits[j]) << 32 | hi;
+			hi = static_cast<uint32_t>(tmp / static_cast<uint64_t>(1e9));
+			digits[j] = static_cast<uint32_t>(tmp-static_cast<uint64_t>(1e9*hi));
+		}
+
+		while(hi) {
+			digits.push_back(hi % static_cast<uint32_t>(1e9));
+			hi /= static_cast<uint32_t>(1e9);
 		}
 	}
+
+	for (idx_t i = 0; i < digits.size()-1; i++) {
+		auto rem = digits[i];
+		for (idx_t j = 0; j < 9; j++) {
+			decimal_string += DigitToChar(static_cast<int>(rem % 10));
+			rem /= 10;
+		}
+	}
+
+	auto rem = digits.back();
+	do {
+		decimal_string += DigitToChar(static_cast<int>(rem % 10));
+		rem /= 10;
+	} while (rem != 0);
+
+	if (is_negative) {
+		decimal_string += '-';
+	}
+	// Reverse the string to get the correct decimal representation
+	std::reverse(decimal_string.begin(), decimal_string.end());
+	return decimal_string;
 }
 
 string Varint::VarIntToVarchar(const string_t &blob) {
@@ -173,8 +230,9 @@ string Varint::VarIntToVarchar(const string_t &blob) {
 	vector<uint8_t> byte_array;
 	bool is_negative;
 	GetByteArray(byte_array, is_negative, blob);
+	string quotient;
 	while (!byte_array.empty()) {
-		string quotient;
+		quotient.clear();
 		uint8_t remainder = 0;
 		for (uint8_t byte : byte_array) {
 			int new_value = remainder * 256 + byte;
@@ -184,10 +242,16 @@ string Varint::VarIntToVarchar(const string_t &blob) {
 		decimal_string += DigitToChar(remainder);
 		// Remove leading zeros from the quotient
 		byte_array.clear();
+		idx_t zero_count = 0;
 		for (char digit : quotient) {
-			if (digit != '0' || !byte_array.empty()) {
-				byte_array.push_back(static_cast<uint8_t>(CharToDigit(digit)));
+			if (digit != '0') {
+				break;
 			}
+			zero_count++;
+		}
+		byte_array.reserve(quotient.size() - zero_count);
+		for (idx_t i = zero_count; i < quotient.size(); i++) {
+			byte_array.push_back(static_cast<uint8_t>(CharToDigit(quotient[i])));
 		}
 	}
 	if (is_negative) {

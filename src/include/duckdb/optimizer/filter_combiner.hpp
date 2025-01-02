@@ -64,6 +64,7 @@ private:
 	// unordered_map<idx_t, std::pair<Value *, Value *>>
 	// FindZonemapChecks(vector<idx_t> &column_ids, unordered_set<idx_t> &not_constants, Expression *filter);
 	Expression &GetNode(Expression &expr);
+	bool TryGetMirrorNode(Expression &expr);
 	idx_t GetEquivalenceSet(Expression &expr);
 	FilterResult AddConstantComparison(vector<ExpressionValueInformation> &info_list, ExpressionValueInformation info);
 	//
