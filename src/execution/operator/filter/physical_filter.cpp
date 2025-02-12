@@ -1,12 +1,13 @@
 #include "duckdb/execution/operator/filter/physical_filter.hpp"
+#include "duckdb/common/types/data_chunk.hpp"
 #include "duckdb/execution/expression_executor.hpp"
 #include "duckdb/planner/expression/bound_conjunction_expression.hpp"
 #include "duckdb/parallel/thread_context.hpp"
 namespace duckdb {
 
 PhysicalFilter::PhysicalFilter(vector<LogicalType> types, vector<unique_ptr<Expression>> select_list,
-                               idx_t estimated_cardinality)
-    : CachingPhysicalOperator(PhysicalOperatorType::FILTER, std::move(types), estimated_cardinality) {
+                               idx_t estimated_cardinality, vector<idx_t> proj_map)
+    : CachingPhysicalOperator(PhysicalOperatorType::FILTER, std::move(types), estimated_cardinality), projection_map(std::move(proj_map)) {
 	D_ASSERT(select_list.size() > 0);
 	if (select_list.size() > 1) {
 		// create a big AND out of the expressions
@@ -43,11 +44,20 @@ OperatorResultType PhysicalFilter::ExecuteInternal(ExecutionContext &context, Da
                                                    GlobalOperatorState &gstate, OperatorState &state_p) const {
 	auto &state = state_p.Cast<FilterState>();
 	idx_t result_count = state.executor.SelectExpression(input, state.sel);
-	if (result_count == input.size()) {
-		// nothing was filtered: skip adding any selection vectors
-		chunk.Reference(input);
+	DataChunk projected_input;
+	if (projection_map.empty()) {
+		projected_input.Initialize(context.client, input.GetTypes());
+		projected_input.Reference(input);
 	} else {
-		chunk.Slice(input, state.sel, result_count);
+		projected_input.Initialize(context.client, types);
+		projected_input.ReferenceColumns(input, projection_map);
+	}
+
+	if (result_count == projected_input.size()) {
+		// nothing was filtered: skip adding any selection vectors
+		chunk.Reference(projected_input);
+	} else {
+		chunk.Slice(projected_input, state.sel, result_count);
 	}
 	return OperatorResultType::NEED_MORE_INPUT;
 }

@@ -21,10 +21,11 @@ public:
 	static constexpr const PhysicalOperatorType TYPE = PhysicalOperatorType::FILTER;
 
 public:
-	PhysicalFilter(vector<LogicalType> types, vector<unique_ptr<Expression>> select_list, idx_t estimated_cardinality);
+	PhysicalFilter(vector<LogicalType> types, vector<unique_ptr<Expression>> select_list, idx_t estimated_cardinality, vector<idx_t> proj_map = {});
 
 	//! The filter expression
 	unique_ptr<Expression> expression;
+	vector<idx_t> projection_map;
 
 public:
 	unique_ptr<OperatorState> GetOperatorState(ExecutionContext &context) const override;
